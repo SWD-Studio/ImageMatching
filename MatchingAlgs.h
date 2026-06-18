@@ -13,7 +13,7 @@ using namespace std;
 using namespace cv;
 
 // ============================================================
-// 1. StitchingContext：数据上下文
+// StitchingContext：数据上下文
 // ============================================================
 class StitchingContext {
 public:
@@ -23,27 +23,28 @@ public:
     string algorithmType = "SIFT";
     bool enableNMS = true;
 
-    // 第1步：特征点
+    // 特征点
     vector<KeyPoint> kpsTemplate;
     vector<KeyPoint> kpsScene;
     Mat descTemplate;
     Mat descScene;
 
-    // 第2步：特征匹配
+    // 特征匹配
     vector<DMatch> allMatches;
     vector<DMatch> goodMatches;
+    vector<DMatch> inlierMatches;
 
-    // 第3步：单应性矩阵
+    // 单应性矩阵
     vector<Point2f> ptsTemplate;
     vector<Point2f> ptsScene;
-    vector<uchar> inliersMask;
+    Mat inliersMask;
     Mat H;
 
-    // 最终结果（第4步展示）
+    // 最终结果
     Mat resultImg;
 
     // 统计数据
-    long executionTimeMs = 0;
+    long executionTimeMs = 0; // 每个步骤更新
     int totalInitialMatches = 0;
     int matchedPointsCount = 0;
     double accuracyScore = 0.0;
@@ -52,6 +53,7 @@ public:
     Mat visLeft;   // 模板图特征/匹配等
     Mat visRight;  // 场景图特征/匹配等
 
+    // 不在GUI中呈现
     // 合并图（用于 Step3、Step4 的 drawMatches 结果）
     Mat stepImage_Matches;
     Mat stepImage_Homography;
@@ -65,7 +67,7 @@ public:
         goodMatches.clear();
         ptsTemplate.clear();
         ptsScene.clear();
-        inliersMask.clear();
+        //inliersMask.clear();
         H.release();
         resultImg.release();
         visLeft.release();
@@ -76,25 +78,26 @@ public:
 };
 
 // ============================================================
-// 2. IStep：步骤接口
+// IStep：步骤接口
 // ============================================================
 class IStep {
 public:
     virtual ~IStep() = default;
     virtual bool execute(StitchingContext& ctx) = 0;
     virtual string getStepName() = 0;
-    virtual Mat getVisualization(StitchingContext& ctx) = 0;
-    // 新增方法：用于 Step1/Step2 分别获取左右图
+    // 分别获取左右图
     virtual Mat getLeftVisualization(StitchingContext& ctx) { return ctx.visLeft; }
     virtual Mat getRightVisualization(StitchingContext& ctx) { return ctx.visRight; }
 };
 
 // ============================================================
-// 3. Step1：检测特征点
+// Step：检测特征点
 // ============================================================
-class Step1_DetectKeypoints : public IStep {
+class Step_DetectKeypoints : public IStep {
 public:
     bool execute(StitchingContext& ctx) override {
+        // 开始计时
+        auto startTime = chrono::high_resolution_clock::now();
         Mat grayTemplate, grayScene;
         cvtColor(ctx.imgTemplate, grayTemplate, COLOR_BGR2GRAY);
         cvtColor(ctx.imgScene, grayScene, COLOR_BGR2GRAY);
@@ -104,13 +107,10 @@ public:
             detector->detect(grayTemplate, ctx.kpsTemplate);
             detector->detect(grayScene, ctx.kpsScene);
         }
-        else if (ctx.algorithmType == "ORB") {
+        else { // ORB
             Ptr<ORB> detector = ORB::create();
             detector->detect(grayTemplate, ctx.kpsTemplate);
             detector->detect(grayScene, ctx.kpsScene);
-        }
-        else {
-            return false;
         }
 
         if (ctx.enableNMS) {
@@ -122,16 +122,29 @@ public:
             applyNMS(ctx.kpsScene, radiusS);
         }
 
+
+        if (ctx.algorithmType == "SIFT") {
+            Ptr<SIFT> detector = SIFT::create();
+            detector->compute(grayTemplate, ctx.kpsTemplate, ctx.descTemplate);
+            detector->compute(grayScene, ctx.kpsScene, ctx.descScene);
+        }
+        else { // ORB
+            Ptr<ORB> detector = ORB::create();
+            detector->compute(grayTemplate, ctx.kpsTemplate, ctx.descTemplate);
+            detector->compute(grayScene, ctx.kpsScene, ctx.descScene);
+        }
+        // 结束计时
+        auto endTime = chrono::high_resolution_clock::now();
+        ctx.executionTimeMs = chrono::duration_cast<chrono::milliseconds>(endTime - startTime).count();
+        
         // 分别生成左右图
         generateVisualization(ctx);
+
         return true;
     }
 
     string getStepName() override { return "特征点检测"; }
 
-    Mat getVisualization(StitchingContext& ctx) override {
-        return ctx.visLeft; // 返回左图（实际不会用到，main中会分别显示）
-    }
 
     Mat getLeftVisualization(StitchingContext& ctx) override {
         return ctx.visLeft;
@@ -161,62 +174,42 @@ private:
     }
 
     void generateVisualization(StitchingContext& ctx) {
-        drawKeypoints(ctx.imgTemplate, ctx.kpsTemplate, ctx.visLeft, Scalar(0, 255, 0));
-        drawKeypoints(ctx.imgScene, ctx.kpsScene, ctx.visRight, Scalar(0, 255, 0));
+        vector<Point2f> corners(4);
+        corners[0] = Point2f(0, 0);
+        corners[1] = Point2f((float)ctx.imgTemplate.cols, 0);
+        corners[2] = Point2f((float)ctx.imgTemplate.cols, (float)ctx.imgTemplate.rows);
+        corners[3] = Point2f(0, (float)ctx.imgTemplate.rows);
+        float diag1 = norm(corners[0] - corners[2]);  // 左上 → 右下
+        float diag2 = norm(corners[1] - corners[3]);  // 右上 → 左下
+        float diag = (diag1 + diag2) / 2.0f;  // 平均
+
+        int scale = cvRound(diag * diag) / 2e6;
+        scale = max(1, min(10, scale));
+
+        for (auto& kp : ctx.kpsTemplate) {
+            kp.size *= scale;
+        }
+        int scale2 = cvRound(diag * diag) / 2e6;
+        scale2 = max(1, min(10, scale));
+
+        for (auto& kp2 : ctx.kpsScene) {
+            kp2.size *= scale2;
+        }
+        drawKeypoints(ctx.imgTemplate, ctx.kpsTemplate, ctx.visLeft, Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+        drawKeypoints(ctx.imgScene, ctx.kpsScene, ctx.visRight, Scalar::all(-1),cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
     }
 };
 
 // ============================================================
-// 4. Step2：计算描述子
+// Step：特征匹配
 // ============================================================
-class Step2_ComputeDescriptors : public IStep {
-public:
-    bool execute(StitchingContext& ctx) override {
-        Mat grayTemplate, grayScene;
-        cvtColor(ctx.imgTemplate, grayTemplate, COLOR_BGR2GRAY);
-        cvtColor(ctx.imgScene, grayScene, COLOR_BGR2GRAY);
-
-        if (ctx.algorithmType == "SIFT") {
-            Ptr<SIFT> detector = SIFT::create();
-            detector->compute(grayTemplate, ctx.kpsTemplate, ctx.descTemplate);
-            detector->compute(grayScene, ctx.kpsScene, ctx.descScene);
-        }
-        else if (ctx.algorithmType == "ORB") {
-            Ptr<ORB> detector = ORB::create();
-            detector->compute(grayTemplate, ctx.kpsTemplate, ctx.descTemplate);
-            detector->compute(grayScene, ctx.kpsScene, ctx.descScene);
-        }
-        else {
-            return false;
-        }
-        // 可视化沿用 Step1 的特征点图（描述子不可视）
-        drawKeypoints(ctx.imgTemplate, ctx.kpsTemplate, ctx.visLeft, Scalar(0, 255, 0));
-        drawKeypoints(ctx.imgScene, ctx.kpsScene, ctx.visRight, Scalar(0, 255, 0));
-        return true;
-    }
-
-    string getStepName() override { return "计算描述子"; }
-
-    Mat getVisualization(StitchingContext& ctx) override {
-        return ctx.visLeft;
-    }
-
-    Mat getLeftVisualization(StitchingContext& ctx) override {
-        return ctx.visLeft;
-    }
-
-    Mat getRightVisualization(StitchingContext& ctx) override {
-        return ctx.visRight;
-    }
-};
-
-// ============================================================
-// 5. Step3：特征匹配
-// ============================================================
-class Step3_MatchFeatures : public IStep {
+class Step_MatchFeatures : public IStep {
 public:
     bool execute(StitchingContext& ctx) override {
         if (ctx.descTemplate.empty() || ctx.descScene.empty()) return false;
+
+        // 开始计时
+        auto startTime = chrono::high_resolution_clock::now();
 
         if (ctx.algorithmType == "SIFT") {
             Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::FLANNBASED);
@@ -231,7 +224,7 @@ public:
                 }
             }
         }
-        else if (ctx.algorithmType == "ORB") {
+        else { // ORB
             Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::BRUTEFORCE_HAMMING);
             vector<vector<DMatch>> knnMatches;
             matcher->knnMatch(ctx.descTemplate, ctx.descScene, knnMatches, 2);
@@ -244,9 +237,10 @@ public:
                 }
             }
         }
-        else {
-            return false;
-        }
+
+        // 结束计时
+        auto endTime = chrono::high_resolution_clock::now();
+        ctx.executionTimeMs = chrono::duration_cast<chrono::milliseconds>(endTime - startTime).count();
 
         ctx.stepImage_Matches = generateVisualization(ctx);
         return true;
@@ -254,9 +248,7 @@ public:
 
     string getStepName() override { return "特征匹配"; }
 
-    Mat getVisualization(StitchingContext& ctx) override {
-        return ctx.stepImage_Matches;
-    }
+   
 
 private:
     Mat generateVisualization(StitchingContext& ctx) {
@@ -271,16 +263,22 @@ private:
 };
 
 // ============================================================
-// 6. Step4：计算单应性矩阵（最终结果）
+// Step：计算单应性矩阵
 // ============================================================
-class Step4_ComputeHomography : public IStep {
+class Step_ComputeHomography : public IStep {
 public:
     bool execute(StitchingContext& ctx) override {
+
+        // 开始计时
+        auto startTime = chrono::high_resolution_clock::now();
+
         if (ctx.goodMatches.size() < 4) {
-            cout << "匹配点不足4个，无法计算单应性矩阵" << endl;
+            MessageBox(NULL, _T("匹配点不足4个，无法计算单应性矩阵"),
+                _T("ImageMatching"), MB_ICONERROR);
+            ctx.executionTimeMs = -1;
             return false;
         }
-
+        ctx.visLeft = ctx.imgTemplate;
         ctx.ptsTemplate.clear();
         ctx.ptsScene.clear();
         for (auto& match : ctx.goodMatches) {
@@ -290,36 +288,55 @@ public:
 
         ctx.H = findHomography(ctx.ptsTemplate, ctx.ptsScene, RANSAC, 3.0, ctx.inliersMask);
         if (ctx.H.empty()) {
-            cout << "单应性矩阵计算失败" << endl;
+            MessageBox(NULL, _T("单应性矩阵计算失败"),
+                _T("ImageMatching"), MB_ICONERROR);
+            ctx.executionTimeMs = -1;
             return false;
         }
 
-        int inliersCount = 0;
-        for (uchar m : ctx.inliersMask) {
-            if (m == 1) inliersCount++;
-        }
-        ctx.matchedPointsCount = inliersCount;
-        ctx.totalInitialMatches = (int)ctx.goodMatches.size();
-        ctx.accuracyScore = (static_cast<double>(inliersCount) / ctx.totalInitialMatches) * 100.0;
+        // 结束计时
+        auto endTime = chrono::high_resolution_clock::now();
+        ctx.executionTimeMs = chrono::duration_cast<chrono::milliseconds>(endTime - startTime).count();
 
-        ctx.stepImage_Homography = generateVisualization(ctx);
-        ctx.resultImg = ctx.stepImage_Homography.clone();
+        // 根据掩膜挑选出内点 (Inliers)
+        for (int i = 0; i < ctx.inliersMask.rows; i++) {
+            // mask 中值为 1 表示该点对符合单应性矩阵，即为内点
+            if (ctx.inliersMask.at<uchar>(i, 0) == 1) {
+                ctx.inlierMatches.push_back(ctx.goodMatches[i]);
+            }
+        }
+
+        ctx.matchedPointsCount = cv::countNonZero(ctx.inliersMask);
+        ctx.totalInitialMatches = (int)ctx.goodMatches.size();
+        ctx.accuracyScore = (static_cast<double>(ctx.matchedPointsCount) / ctx.totalInitialMatches) * 100.0;
         return true;
     }
 
-    string getStepName() override { return "单应性矩阵计算（匹配结果）"; }
+    string getStepName() override { return "单应性矩阵计算"; }
+};
 
-    Mat getVisualization(StitchingContext& ctx) override {
-        return ctx.stepImage_Homography;
+// ============================================================
+// Step：结果呈现
+// ============================================================
+class Step_ShowResult : public IStep {
+public:
+    bool execute(StitchingContext& ctx) override {
+
+        // 开始计时
+        auto startTime = chrono::high_resolution_clock::now();
+        // 结束计时
+        auto endTime = chrono::high_resolution_clock::now();
+        ctx.executionTimeMs = chrono::duration_cast<chrono::milliseconds>(endTime - startTime).count();
+        generateVisualization(ctx);
+        return true;
     }
+
+    string getStepName() override { return "结果呈现"; }
+
 
 private:
     Mat generateVisualization(StitchingContext& ctx) {
         Mat vis;
-        // 将 inliersMask 从 vector<uchar> 转为 vector<char>
-        vector<char> matchesMask(ctx.inliersMask.begin(), ctx.inliersMask.end());
-
-       
 
         // 绘制四个角点映射边框
         vector<Point2f> corners(4);
@@ -327,27 +344,26 @@ private:
         corners[1] = Point2f((float)ctx.imgTemplate.cols, 0);
         corners[2] = Point2f((float)ctx.imgTemplate.cols, (float)ctx.imgTemplate.rows);
         corners[3] = Point2f(0, (float)ctx.imgTemplate.rows);
-
+        ctx.visRight = ctx.imgScene.clone();
         vector<Point2f> sceneCorners(4);
         perspectiveTransform(corners, sceneCorners, ctx.H);
+        // 两点之间的距离 = 对角线长度
+        float diag1 = norm(sceneCorners[0] - sceneCorners[2]);  // 左上 → 右下
+        float diag2 = norm(sceneCorners[1] - sceneCorners[3]);  // 右上 → 左下
+        float diag = (diag1 + diag2) / 2.0f;  // 平均
 
-
+        int thickness = cvRound(diag * diag) / 3e5;
+        thickness = max(2, min(10, thickness));
         for (int i = 0; i < 4; i++) {
-            line(ctx.visRight, sceneCorners[i], sceneCorners[(i + 1) % 4], Scalar(0, 255, 0), 3);
+            line(ctx.visRight, sceneCorners[i], sceneCorners[(i + 1) % 4], Scalar(0, 255, 0), thickness);
         }
-
-        string text = "准确率: " + to_string(ctx.accuracyScore).substr(0, 5) + "%";
-        putText(ctx.visRight, text, Point(10, 30), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(255, 0, 0), 2);
-
-        string info = "内点: " + to_string(ctx.matchedPointsCount) + "/" + to_string(ctx.totalInitialMatches);
-        putText(ctx.visRight, info, Point(10, 60), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(255, 0, 0), 2);
 
         return ctx.visRight;
     }
 };
 
 // ============================================================
-// 7. StitchController：流程控制器（只含4步）
+// StitchController：流程控制器
 // ============================================================
 class StitchController {
 public:
@@ -360,10 +376,10 @@ public:
         m_currentStep = -1;
 
         m_steps.clear();
-        m_steps.push_back(make_shared<Step1_DetectKeypoints>());
-        m_steps.push_back(make_shared<Step2_ComputeDescriptors>());
-        m_steps.push_back(make_shared<Step3_MatchFeatures>());
-        m_steps.push_back(make_shared<Step4_ComputeHomography>());
+        m_steps.push_back(make_shared<Step_DetectKeypoints>());
+        m_steps.push_back(make_shared<Step_MatchFeatures>());
+        m_steps.push_back(make_shared<Step_ComputeHomography>());
+        m_steps.push_back(make_shared<Step_ShowResult>());
     }
 
     void setImages(const Mat& templateImg, const Mat& sceneImg) {
@@ -371,6 +387,7 @@ public:
         m_context.imgScene = sceneImg.clone();
         m_context.clearMiddleResults();
         m_currentStep = -1;
+        m_context.inlierMatches.clear();
     }
 
     bool executeNextStep() {
@@ -396,14 +413,8 @@ public:
         }
     }
 
-    Mat getCurrentStepImage() {
-        if (m_currentStep < 0 || m_currentStep >= (int)m_steps.size()) {
-            return Mat();
-        }
-        return m_steps[m_currentStep]->getVisualization(m_context);
-    }
 
-    // 获取左右图（用于 Step1/Step2）
+    // 获取左右图
     Mat getCurrentLeftImage() {
         if (m_currentStep < 0 || m_currentStep >= (int)m_steps.size()) {
             return Mat();
@@ -442,7 +453,7 @@ private:
 };
 
 // ============================================================
-// 8. 策略类（保留原有接口，兼容旧代码）
+// 策略类（保留原有接口，兼容旧代码）
 // ============================================================
 class MatchResult {
 public:
@@ -533,7 +544,7 @@ public:
 };
 
 // ============================================================
-// 9. 主函数
+// 主函数
 // ============================================================
 //int algs_main(int argc, char** argv) {
 //    // 修改成你的图片路径

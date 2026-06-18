@@ -35,10 +35,12 @@ protected:
 	std::vector<const wchar_t *> steps{
 		_T("读取文件"),
 		_T("检测特征点"),
-		_T("计算描述子"),
+		// _T("计算描述子"),
 		_T("特征匹配"),
-		_T("计算单应性矩阵")
+		_T("计算单应性矩阵"),
+		_T("结果呈现")
 	};
+	std::vector<double> time; // 记录每个步骤花费的时间
 	std::vector<const wchar_t*> algs{
 		_T("ORB"),
 		_T("SIFT")
@@ -68,6 +70,8 @@ private:
 	cv::Mat pure = { 1, 1, CV_8UC3, cv::Scalar(243, 243, 243) };
 	std::vector<cv::Mat> m_stepLeftImages;  // 存储每一步的左图
 	std::vector<cv::Mat> m_stepRightImages; // 存储每一步的右图
+	std::vector<MyLine> lines1; // goodMatches
+	std::vector<MyLine> lines2; // inlierMatches
 
 public:
 	afx_msg void OnBnClickedOk();
@@ -83,4 +87,5 @@ public:
 	afx_msg void OnBnClickedButtonb();
 	CNavListBox m_AlgsList;
 	CNavListBox m_NMSList;
+	CEdit m_editCtrl;
 };

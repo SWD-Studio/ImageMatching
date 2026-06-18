@@ -29,6 +29,7 @@ void CImageMatchingDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_LIST1, myListBox);
 	DDX_Control(pDX, IDC_LIST2, m_AlgsList);
 	DDX_Control(pDX, IDC_LIST3, m_NMSList);
+	DDX_Control(pDX, IDC_EDIT1, m_editCtrl);
 }
 
 BEGIN_MESSAGE_MAP(CImageMatchingDlg, CDialogEx)
@@ -280,24 +281,33 @@ void CImageMatchingDlg::OnLbnSelchangeList1()
 		GetDlgItem(IDC_LIST3)->EnableWindow(FALSE);
 	}
 	// 显示左右两张图
-		Mat left = (selIndex < (int)m_stepLeftImages.size() && !m_stepLeftImages[selIndex].empty())
-			? m_stepLeftImages[selIndex]
-			: Mat();
-		Mat right = (selIndex < (int)m_stepRightImages.size() && !m_stepRightImages[selIndex].empty())
-			? m_stepRightImages[selIndex]
-			: Mat();
+	Mat left = (selIndex < (int)m_stepLeftImages.size() && !m_stepLeftImages[selIndex].empty())
+		? m_stepLeftImages[selIndex]
+		: Mat();
+	Mat right = (selIndex < (int)m_stepRightImages.size() && !m_stepRightImages[selIndex].empty())
+		? m_stepRightImages[selIndex]
+		: Mat();
 
-		if (!left.empty()) {
-			scaleA = ShowImageMatchControl(left, m_rcOrigImgA, "picViewA", IDC_IMGA);
-		}
-		if (!right.empty()) {
-			scaleB = ShowImageMatchControl(right, m_rcOrigImgB, "picViewB", IDC_IMGB);
-		}
-	if (selIndex == 3) {
-		m_wndOverlay.SetShowLines(true);
+	if (!left.empty()) {
+		scaleA = ShowImageMatchControl(left, m_rcOrigImgA, "picViewA", IDC_IMGA);
 	}
-	else {
+	if (!right.empty()) {
+		scaleB = ShowImageMatchControl(right, m_rcOrigImgB, "picViewB", IDC_IMGB);
+	}
+	switch (selIndex)
+	{
+	case 2:
+		m_wndOverlay.m_vecLines = lines1;
+		m_wndOverlay.SetShowLines(true);
+		break;
+	case 3:
+		m_wndOverlay.m_vecLines = lines2;
+		m_wndOverlay.SetShowLines(true);
+		Invalidate();
+		break;
+	default:
 		m_wndOverlay.SetShowLines(false);
+		break;
 	}
 }
 void CImageMatchingDlg::OnBnClickedButton1()
@@ -319,8 +329,14 @@ void CImageMatchingDlg::OnBnClickedButton1()
 		controller.setImages(imread((String)CT2A(sa)),
 			imread((String)CT2A(sb)));
 		controller.setAlgorithm((String)CT2A(algs[m_AlgsList.GetCurSel()]), m_NMSList.GetCurSel());
+		time.clear();
+		m_editCtrl.SetWindowTextW(_T(""));
 		m_stepLeftImages.clear();
 		m_stepRightImages.clear();
+		lines1.clear();
+		lines2.clear();
+		m_wndOverlay.m_vecLines.clear();
+		m_wndOverlay.Invalidate();
 		m_stepLeftImages.push_back(OrigMatA);
 		m_stepRightImages.push_back(OrigMatB);
 	}
@@ -350,6 +366,7 @@ void CImageMatchingDlg::OnBnClickedButton1()
 
 			// 执行算法，获取新步骤的图像
 			controller.executeNextStep();
+			time.push_back(controller.getContext().executionTimeMs);
 			int stepIdx = controller.getCurrentStepIndex();
 			Mat leftImg = controller.getCurrentLeftImage();
 			Mat rightImg = controller.getCurrentRightImage();
@@ -362,19 +379,49 @@ void CImageMatchingDlg::OnBnClickedButton1()
 			OnLbnSelchangeList1();
 
 			// 这时候要获取连线
-			if (sel == 2) {
-				vector<MyLine> lines;
+			if (sel == 1) {
 				const StitchingContext& context = controller.getContext();
 				for (size_t i = 0; i < context.goodMatches.size(); i++) {
 					auto PointA = context.kpsTemplate[context.goodMatches[i].queryIdx].pt;
 					auto PointB = context.kpsScene[context.goodMatches[i].trainIdx].pt;
-					lines.push_back({
+					lines1.push_back({
 						MapMatPointToClient(GetDlgItem(IDC_IMGA), PointA, scaleA),
 						MapMatPointToClient(GetDlgItem(IDC_IMGB), PointB, scaleB),
 						0
 					});
 				}
-				m_wndOverlay.m_vecLines = std::move(lines);
+				m_wndOverlay.m_vecLines = lines1;
+			}
+			else if (sel == 2) {
+				const StitchingContext& context = controller.getContext();
+				for (size_t i = 0; i < context.inlierMatches.size(); i++) {
+					auto PointA = context.kpsTemplate[context.inlierMatches[i].queryIdx].pt;
+					auto PointB = context.kpsScene[context.inlierMatches[i].trainIdx].pt;
+					lines2.push_back({
+						MapMatPointToClient(GetDlgItem(IDC_IMGA), PointA, scaleA),
+						MapMatPointToClient(GetDlgItem(IDC_IMGB), PointB, scaleB),
+						0
+					});
+				}
+				m_wndOverlay.m_vecLines = lines2;
+			}
+
+			// 显示时间
+			CString str;
+			str.Format(_T("步骤%d: %s\r\n耗时: %.1fms\r\n\r\n"), sel + 1, steps[sel + 1], time[sel]);
+			int len = m_editCtrl.GetWindowTextLength();
+			m_editCtrl.SetSel(len, len);
+			m_editCtrl.ReplaceSel(str);
+
+			// 最后一步计算完成之后，还要显示其他统计数据
+			if (sel == (int)steps.size() - 2) {
+				str.Format(_T("初始匹配总数: %d\r\n正确匹配点数: %d\r\n匹配准确率: %.1f%%"),
+					controller.getContext().totalInitialMatches,
+					controller.getContext().matchedPointsCount,
+					controller.getContext().accuracyScore);
+				int len = m_editCtrl.GetWindowTextLength();
+				m_editCtrl.SetSel(len, len);
+				m_editCtrl.ReplaceSel(str);
 			}
 		}
 		else {
