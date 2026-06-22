@@ -7,6 +7,8 @@
 #include "ImageMatching.h"
 #include "ImageMatchingDlg.h"
 #include "afxdialogex.h"
+#include <dwmapi.h>
+#pragma comment(lib, "dwmapi.lib")
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -21,6 +23,7 @@ CImageMatchingDlg::CImageMatchingDlg(CWnd* pParent /*=nullptr*/)
 	: CDialogEx(IDD_IMAGEMATCHING_DIALOG, pParent)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
+	m_currentColor = RGB(0, 255, 0);
 }
 
 void CImageMatchingDlg::DoDataExchange(CDataExchange* pDX)
@@ -30,17 +33,26 @@ void CImageMatchingDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_LIST2, m_AlgsList);
 	DDX_Control(pDX, IDC_LIST3, m_NMSList);
 	DDX_Control(pDX, IDC_EDIT1, m_editCtrl);
+	DDX_Control(pDX, IDC_BUTTONA, m_buttonA);
+	DDX_Control(pDX, IDC_BUTTONB, m_buttonB);
+	DDX_Control(pDX, IDC_BUTTON1, button1);
+	DDX_Control(pDX, IDC_BUTTONA, m_buttonA);
+	DDX_Control(pDX, IDC_BUTTONB, m_buttonB);
+	DDX_Control(pDX, IDC_BUTTON1, button1);
+	DDX_Control(pDX, IDC_BUTTON4, m_prevButton);
 }
 
 BEGIN_MESSAGE_MAP(CImageMatchingDlg, CDialogEx)
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
-	ON_BN_CLICKED(IDOK, &CImageMatchingDlg::OnBnClickedOk)
 	ON_BN_CLICKED(IDCANCEL, &CImageMatchingDlg::OnBnClickedCancel)
 	ON_LBN_SELCHANGE(IDC_LIST1, &CImageMatchingDlg::OnLbnSelchangeList1)
 	ON_BN_CLICKED(IDC_BUTTON1, &CImageMatchingDlg::OnBnClickedButton1)
 	ON_BN_CLICKED(IDC_BUTTONA, &CImageMatchingDlg::OnBnClickedButtona)
 	ON_BN_CLICKED(IDC_BUTTONB, &CImageMatchingDlg::OnBnClickedButtonb)
+	ON_WM_CTLCOLOR()
+	ON_STN_CLICKED(IDC_STATIC_COLOR_BLOCK, &CImageMatchingDlg::OnStnClickedStaticColorBlock)
+	ON_BN_CLICKED(IDC_BUTTON4, &CImageMatchingDlg::OnBnClickedButton4)
 END_MESSAGE_MAP()
 
 
@@ -94,7 +106,9 @@ BOOL CImageMatchingDlg::OnInitDialog()
 {
 	CDialogEx::OnInitDialog();
 
-	this->SetWindowTextW(_T("图像匹配演示"));
+	m_bgBrush.CreateSolidBrush(RGB(243, 243, 243));
+	mFont.CreatePointFont(120, _T("Microsoft YaHei UI"));
+	mSmallFont.CreatePointFont(100, _T("Microsoft YaHei UI"));
 
 	// 设置此对话框的图标。  当应用程序主窗口不是对话框时，框架将自动
 	//  执行此操作
@@ -104,27 +118,34 @@ BOOL CImageMatchingDlg::OnInitDialog()
 	 // 设置每一行的高度
 	// 参数1是索引（设为0表示全部），参数2是高度像素
 	myListBox.SetItemHeight(0, 80);
-	mFont.CreatePointFont(100, _T("Microsoft YaHei UI"));
 	myListBox.SetFont(&mFont);
 	// 添加左侧导航的选项内容
 	myListBox.InsertString(-1, steps[0]);
 	myListBox.SetCurSel(0);
-
 	m_AlgsList.SetItemHeight(0, 40);
-	mFont.CreatePointFont(100, _T("Microsoft YaHei UI"));
-	m_AlgsList.SetFont(&mFont);
+	m_AlgsList.SetFont(&mSmallFont);
 	for (const auto& item : algs) {
 		m_AlgsList.InsertString(-1, item);
 	}
 	m_AlgsList.SetCurSel(0);
-
 	m_NMSList.SetItemHeight(0, 40);
-	mFont.CreatePointFont(100, _T("Microsoft YaHei UI"));
-	m_NMSList.SetFont(&mFont);
+	m_NMSList.SetFont(&mSmallFont);
 	for (const auto& item : fort) {
 		m_NMSList.InsertString(-1, item);
 	}
 	m_NMSList.SetCurSel(1);
+
+	for (const auto i : {
+		IDC_STATICA2,
+		IDC_STATICB,
+		IDC_EDITA,
+		IDC_EDITB,
+		IDC_STATICA,
+		IDC_STATICA3,
+		IDC_STATICA4
+		}) {
+		GetDlgItem(i)->SetFont(&mSmallFont);
+	}
 
 	cv::namedWindow("picViewA", cv::WINDOW_NORMAL);
 	hWndA = (HWND)cvGetWindowHandle("picViewA");
@@ -228,23 +249,6 @@ inline CPoint CImageMatchingDlg::MapMatPointToClient(CWnd* pCtrl, cv::Point matP
 	return clientPt;
 }
 
-
-void CImageMatchingDlg::OnBnClickedOk()
-{
-	using namespace cv;
-	//CDialogEx::OnOK();
-
-	Mat img0;
-	if (f0) {
-		imread("D:/Samples/0.png", img0);
-	}
-	else {
-		imread("D:/nwafu_logo.png", img0);
-	}
-	f0 = !f0;
-	scaleB = ShowImageMatchControl(img0, m_rcOrigImgB, "picViewB", IDC_IMGB);
-}
-
 void CImageMatchingDlg::OnBnClickedCancel()
 {
 	CDialogEx::OnCancel();
@@ -256,14 +260,6 @@ void CImageMatchingDlg::OnLbnSelchangeList1()
 	int selIndex = myListBox.GetCurSel();
 	if (selIndex == LB_ERR) return;
 
-	// 正常状态下，未执行的步骤不会显示
-	//// 检查该步骤是否已执行（必须小于等于 currentStep 且在容器范围内）
-	//if (selIndex > currentStep || selIndex >= (int)m_stepImages.size()) {
-	//	AfxMessageBox(_T("该步骤尚未执行，请先执行前面的步骤！"));
-	//	myListBox.SetCurSel(currentStep);
-	//	return;
-	//}
-
 	// 根据步骤索引显示对应的图片
 	if (selIndex == 0) {
 		for (int i = IDC_BUTTONA; i <= IDC_BUTTONB; ++i) {
@@ -271,6 +267,7 @@ void CImageMatchingDlg::OnLbnSelchangeList1()
 		}
 		GetDlgItem(IDC_LIST2)->EnableWindow(TRUE);
 		GetDlgItem(IDC_LIST3)->EnableWindow(TRUE);
+		GetDlgItem(IDC_STATIC_COLOR_BLOCK)->EnableWindow(TRUE);
 	}
 	else
 	{
@@ -279,6 +276,7 @@ void CImageMatchingDlg::OnLbnSelchangeList1()
 		}
 		GetDlgItem(IDC_LIST2)->EnableWindow(FALSE);
 		GetDlgItem(IDC_LIST3)->EnableWindow(FALSE);
+		GetDlgItem(IDC_STATIC_COLOR_BLOCK)->EnableWindow(FALSE);
 	}
 	// 显示左右两张图
 	Mat left = (selIndex < (int)m_stepLeftImages.size() && !m_stepLeftImages[selIndex].empty())
@@ -329,6 +327,11 @@ void CImageMatchingDlg::OnBnClickedButton1()
 		controller.setImages(imread((String)CT2A(sa)),
 			imread((String)CT2A(sb)));
 		controller.setAlgorithm((String)CT2A(algs[m_AlgsList.GetCurSel()]), m_NMSList.GetCurSel());
+		double b = (m_currentColor >> 16) & 0xFF;
+		double g = (m_currentColor >> 8) & 0xFF;
+		double r = m_currentColor & 0xFF;
+		controller.getContext().color = { b, g, r };
+		m_wndOverlay.color = m_currentColor;
 		time.clear();
 		m_editCtrl.SetWindowTextW(_T(""));
 		m_stepLeftImages.clear();
@@ -346,8 +349,9 @@ void CImageMatchingDlg::OnBnClickedButton1()
 	}
 	GetDlgItem(IDC_LIST2)->EnableWindow(FALSE);
 	GetDlgItem(IDC_LIST3)->EnableWindow(FALSE);
+	GetDlgItem(IDC_STATIC_COLOR_BLOCK)->EnableWindow(FALSE);
 
-	// 情况1：回看历史步骤 → 仅切换到下一步（已有结果）
+	// 情况1：回看历史步骤 -> 仅切换到下一步（已有结果）
 	if (sel < currentStep) {
 		int next = sel + 1;
 		if (next <= currentStep) {
@@ -453,5 +457,71 @@ void CImageMatchingDlg::OnBnClickedButtonb()
 		GetDlgItem(IDC_EDITB)->SetWindowTextW(fileDlg.GetPathName());
 		OrigMatB = imread((String)CT2A(fileDlg.GetPathName()));
 		ShowImageMatchControl(OrigMatB, m_rcOrigImgB, "picViewB", IDC_IMGB);
+	}
+}
+
+HBRUSH CImageMatchingDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
+{
+	HBRUSH hbr = CDialogEx::OnCtlColor(pDC, pWnd, nCtlColor);
+
+	// 检查是不是要修改的特定 ID 的控件
+	switch (pWnd->GetDlgCtrlID()) {
+	case IDC_EDIT1:
+	case IDC_STATICA2:
+	case IDC_STATICB:
+	case IDC_EDITA:
+	case IDC_EDITB:
+	case IDC_STATICA:
+	case IDC_STATICA3:
+	case IDC_STATICA4:
+		// 设置文本的背景颜色，使其与刷子颜色一致，防止文字周围有白边
+		pDC->SetBkColor(RGB(243, 243, 243));
+		pDC->SetTextColor(RGB(0, 0, 0)); // 设置文本颜色
+		// 返回创建的刷子
+		return (HBRUSH)m_bgBrush.GetSafeHandle();
+	}
+
+	// 判断当前正在绘制的控件是否是颜色展示块
+	if (pWnd->GetDlgCtrlID() == IDC_STATIC_COLOR_BLOCK)
+	{
+		// 设置背景色为当前选中的颜色（默认为绿色）
+		pDC->SetBkColor(m_currentColor);
+
+		// 返回一个对应颜色的实心画刷，系统会用它来填充控件背景
+		// 注意：为避免内存泄漏，建议将 m_brush 定义为类的成员变量，并在构造函数中初始化
+		m_brush.DeleteObject();
+		m_brush.CreateSolidBrush(m_currentColor);
+		return m_brush;
+	}
+
+	return hbr;
+}
+
+void CImageMatchingDlg::OnStnClickedStaticColorBlock()
+{
+	CColorDialog colorDlg(m_currentColor);
+	if (colorDlg.DoModal() == IDOK)
+	{
+		m_currentColor = colorDlg.GetColor();
+		GetDlgItem(IDC_STATIC_COLOR_BLOCK)->Invalidate();
+	}
+}
+
+void CImageMatchingDlg::OnBnClickedButton4()
+{
+	int sel = myListBox.GetCurSel();
+	if (sel == LB_ERR) return;
+	if (sel == 1) {
+		for (int i = IDC_BUTTONA; i <= IDC_BUTTONB; ++i) {
+			GetDlgItem(i)->EnableWindow(TRUE);
+		}
+		GetDlgItem(IDC_LIST2)->EnableWindow(TRUE);
+		GetDlgItem(IDC_LIST3)->EnableWindow(TRUE);
+		GetDlgItem(IDC_STATIC_COLOR_BLOCK)->EnableWindow(TRUE);
+	}
+	int next = sel - 1;
+	if (next >= 0) {
+		myListBox.SetCurSel(next);
+		OnLbnSelchangeList1();   // 刷新图片显示
 	}
 }

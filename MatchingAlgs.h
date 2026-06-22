@@ -333,7 +333,7 @@ private:
 		int thickness = cvRound(diag * diag) / 3e5;
 		thickness = max(2, min(10, thickness));
 		for (int i = 0; i < 4; i++) {
-			line(ctx.visRight, sceneCorners[i], sceneCorners[(i + 1) % 4], Scalar(0, 255, 0), thickness);
+			line(ctx.visRight, sceneCorners[i], sceneCorners[(i + 1) % 4], ctx.color, thickness);
 		}
 
 		return ctx.visRight;

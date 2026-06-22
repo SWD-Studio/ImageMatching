@@ -10,7 +10,7 @@
 #include <vector>
 #include "MatchingAlgs.h"
 #include "COverlayWnd.h"
-
+#include "CModernButton.h"
 // CImageMatchingDlg 对话框
 class CImageMatchingDlg : public CDialogEx
 {
@@ -30,12 +30,11 @@ public:
 // 实现
 protected:
 	HICON m_hIcon;
-	HWND hWndA, hWndB;
-	bool f0 = false;
+	HWND hWndA, hWndB; // OpenCV 显示图像的两个窗口
+	CBrush m_bgBrush; // 用于存储背景颜色的刷子
 	std::vector<const wchar_t *> steps{
 		_T("读取文件"),
 		_T("检测特征点"),
-		// _T("计算描述子"),
 		_T("特征匹配"),
 		_T("计算单应性矩阵"),
 		_T("结果呈现")
@@ -53,7 +52,7 @@ protected:
 	CRect m_rcOrigImgA, m_rcOrigImgB; // 记录两个图片控件的原始尺寸
 	double scaleA = 1.0, scaleB = 1.0;
 	StitchController controller;
-    double ShowImageMatchControl(const cv::Mat& img, const CRect& OrigImg, const char* name, int controlID);
+	double ShowImageMatchControl(const cv::Mat& img, const CRect& OrigImg, const char* name, int controlID);
 
 	// 生成的消息映射函数
 	virtual BOOL OnInitDialog();
@@ -66,6 +65,7 @@ protected:
 
 private:
 	CFont mFont;
+	CFont mSmallFont;
 	cv::Mat OrigMatA, OrigMatB;
 	cv::Mat pure = { 1, 1, CV_8UC3, cv::Scalar(243, 243, 243) };
 	std::vector<cv::Mat> m_stepLeftImages;  // 存储每一步的左图
@@ -74,7 +74,6 @@ private:
 	std::vector<MyLine> lines2; // inlierMatches
 
 public:
-	afx_msg void OnBnClickedOk();
 	afx_msg void OnBnClickedCancel();
 	afx_msg void OnLbnSelchangeList1();
 	CNavListBox myListBox;
@@ -82,10 +81,18 @@ public:
 
 	COverlayWnd m_wndOverlay; // 声明遮罩窗口对象
 	
-
 	afx_msg void OnBnClickedButtona();
 	afx_msg void OnBnClickedButtonb();
 	CNavListBox m_AlgsList;
 	CNavListBox m_NMSList;
 	CEdit m_editCtrl;
+	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
+	CModernButton m_buttonA;
+	CModernButton m_buttonB;
+	CModernButton button1;
+	COLORREF m_currentColor;  // 存储当前颜色
+	CBrush m_brush;           // 用于绘制颜色块的画刷
+	afx_msg void OnStnClickedStaticColorBlock();
+	CModernButton m_prevButton;
+	afx_msg void OnBnClickedButton4();
 };

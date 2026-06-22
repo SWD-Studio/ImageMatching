@@ -208,6 +208,7 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="CModernButton.h" />
     <ClInclude Include="CNavListBox.h" />
     <ClInclude Include="COverlayWnd.h" />
     <ClInclude Include="framework.h" />
@@ -218,6 +219,7 @@
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="CModernButton.cpp" />
     <ClCompile Include="CNavListBox.cpp" />
     <ClCompile Include="COverlayWnd.cpp" />
     <ClCompile Include="ImageMatching.cpp" />
@@ -239,6 +241,7 @@
     <None Include="res\ImageMatching.rc2" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="D:\logo.png" />
     <Image Include="res\ImageMatching.ico" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

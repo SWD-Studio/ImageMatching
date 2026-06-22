@@ -22,6 +22,7 @@ public:
     void SetShowLines(bool bShow); // 控制同步显隐
 
     std::vector<MyLine> m_vecLines;
+    COLORREF color;
 
 protected:
     bool m_bShowLines = false;

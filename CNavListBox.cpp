@@ -3,7 +3,6 @@
 
 #include "pch.h"
 #include "CNavListBox.h"
-//#include "ImageMatchingDlg.h"
 
 
 // CNavListBox
@@ -39,22 +38,19 @@ inline void CNavListBox::DrawItem(LPDRAWITEMSTRUCT lpDrawItemStruct)
     BOOL bIsHover = (nIndex == m_nHoverIndex); // 判断这一行是不是正被鼠标悬停
 
     if (bIsSelected) {
-        // 1. 画选中项的整体背景（极浅的蓝灰色）
+        // 画选中项的背景（极浅的蓝灰色）
         pDC->FillSolidRect(&rect, RGB(232, 235, 240));
         pDC->SetTextColor(RGB(0, 0, 0)); // 激活时文字用更深的黑色
 
-        // 2. 画左侧的蓝色指示条 (Accent Bar)
+        // 画左侧的蓝色指示条
         CRect barRect = rect;
         barRect.right = barRect.left + 4; // 竖线的宽度设为 4 个像素
-        // 为了更美观，可以让竖线上下留一点空隙（可选）
-        // barRect.top += 4; 
-        // barRect.bottom -= 4;
         pDC->FillSolidRect(&barRect, RGB(0, 95, 184));
     }
     else if (bIsHover)
     {
-        // 状态 2：未选中，但鼠标正【悬停】在上面
-        // 颜色比普通背景稍深一点点，给出丝滑的交互反馈
+        // 未选中，但鼠标悬停在上面
+        // 颜色比普通背景稍深一点
         pDC->FillSolidRect(&rect, RGB(229, 229, 229));
         pDC->SetTextColor(RGB(30, 30, 30));
     }
@@ -93,7 +89,7 @@ END_MESSAGE_MAP()
 // 鼠标移动事件
 void CNavListBox::OnMouseMove(UINT nFlags, CPoint point)
 {
-    // 1. 如果没有在追踪鼠标，则开启追踪（这样鼠标移出控件外时，我们才能收到 WM_MOUSELEAVE 消息）
+    // 如果没有在追踪鼠标，则开启追踪（这样鼠标移出控件外时，我们才能收到 WM_MOUSELEAVE 消息）
     if (!m_bTracking)
     {
         TRACKMOUSEEVENT tme;
@@ -106,7 +102,7 @@ void CNavListBox::OnMouseMove(UINT nFlags, CPoint point)
         }
     }
 
-    // 2. 计算当前鼠标坐标落在哪个列表项上
+    // 计算当前鼠标坐标落在哪个列表项上
     BOOL bOutside = FALSE;
     int nIndex = ItemFromPoint(point, bOutside);
 
@@ -116,13 +112,11 @@ void CNavListBox::OnMouseMove(UINT nFlags, CPoint point)
         nIndex = -1;
     }
 
-    // 3. 如果鼠标悬停的项发生了变化，才需要重绘
+    // 如果鼠标悬停的项发生了变化，才需要重绘
     if (nIndex != m_nHoverIndex)
     {
         m_nHoverIndex = nIndex;
-        // Invalidate(FALSE) 表示不擦除整个背景地重绘，能有效避免闪烁
-        Invalidate(FALSE);
-        //dynamic_cast<CImageMatchingDlg*>(this->GetParent())->m_wndOverlay.Invalidate(FALSE);
+        Invalidate(FALSE); // 不擦除整个背景地重绘，能有效避免闪烁
     }
 
     CListBox::OnMouseMove(nFlags, point);
@@ -138,7 +132,6 @@ void CNavListBox::OnMouseLeave()
     {
         m_nHoverIndex = -1;
         Invalidate(FALSE);
-        //dynamic_cast<CImageMatchingDlg*>(this->GetParent())->m_wndOverlay.Invalidate(FALSE);
     }
 }
 
@@ -146,7 +139,6 @@ void CNavListBox::OnMouseLeave()
 void CNavListBox::OnLButtonDown(UINT nFlags, CPoint point)
 {
     CListBox::OnLButtonDown(nFlags, point);
-    //dynamic_cast<CImageMatchingDlg*>(this->GetParent())->m_wndOverlay.Invalidate(FALSE);
 }
 
 BOOL CNavListBox::OnEraseBkgnd(CDC* pDC)
@@ -155,9 +147,8 @@ BOOL CNavListBox::OnEraseBkgnd(CDC* pDC)
     CRect rectClient;
     GetClientRect(&rectClient);
 
-    // 用我们方案中的“普通未选中状态背景色”填满它，保持视觉统一
+    // 用“普通未选中状态背景色”填满，保持视觉统一
     pDC->FillSolidRect(&rectClient, RGB(243, 243, 243));
 
-    // 返回 TRUE 告诉 Windows：“我自己已经画好背景了，你不需要再用默认的白色去画了”
     return TRUE;
 }

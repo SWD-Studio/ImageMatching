@@ -42,6 +42,9 @@
     <ClInclude Include="COverlayWnd.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="CModernButton.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ImageMatching.cpp">
@@ -59,6 +62,9 @@
     <ClCompile Include="COverlayWnd.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="CModernButton.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="ImageMatching.rc">
@@ -72,6 +78,9 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="res\ImageMatching.ico">
+      <Filter>资源文件</Filter>
+    </Image>
+    <Image Include="D:\logo.png">
       <Filter>资源文件</Filter>
     </Image>
   </ItemGroup>
