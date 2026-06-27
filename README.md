@@ -5,7 +5,6 @@
 ![GitHub Size](https://img.shields.io/github/repo-size/SWD-Studio/ImageMatching)
 ![GitHub License](https://img.shields.io/github/license/SWD-Studio/ImageMatching)
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/t/SWD-Studio/ImageMatching)
-
 ![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/SWD-Studio/ImageMatching/total)
 
 ## 一个免费，开源的图像匹配算法逐步演示软件
@@ -56,7 +55,7 @@ OpenCV版本：4.12.0
 
 ## License
 
-ImagineMatching is under the [MIT License](https://github.com/SWD-Studio/ImageMatching/blob/main/LICENSE). External libraries used by ImageMatching are distributed under their own licenses.
+ImageMatching is under the [MIT License](https://github.com/SWD-Studio/ImageMatching/blob/main/LICENSE). External libraries used by ImageMatching are distributed under their own licenses.
 
 In short, ImageMatching is free for any use (commercial or personal, proprietary or open-source). You can use ImageMatching in your project without any restriction.
 
